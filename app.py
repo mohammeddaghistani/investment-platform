@@ -1,7 +1,6 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-import numpy_financial as npf
 import qrcode
 from io import BytesIO
 from datetime import datetime
@@ -9,55 +8,41 @@ import plotly.express as px
 import streamlit_authenticator as stauth
 
 # ==========================================
-# 1. نظام الحماية المحدث (Security Update)
+# 1. نظام الحماية المحدث (Compatible with v0.3.0+)
 # ==========================================
 
-# تعريف المستخدمين
-config = {
-    'credentials': {
-        'usernames': {
-            'invest_admin': {
-                'name': 'إدارة الاستثمار',
-                'password': 'admin123' # سيتم تشفيرها تلقائياً بواسطة المكتبة في الإصدارات الأحدث أو استبدلها بـ Hash
-            },
-            'ceo_makkah': {
-                'name': 'المدير التنفيذي',
-                'password': 'ceo2025'
-            }
-        }
-    },
-    'cookie': {
-        'expiry_days': 1,
-        'key': 'investment_signature_key',
-        'name': 'investment_cookie'
-    },
-    'preauthorized': {
-        'emails': ['admin@example.com']
+# تعريف بيانات المستخدمين
+names = ['إدارة الاستثمار', 'المدير التنفيذي']
+usernames = ['invest_admin', 'ceo_makkah']
+# ملاحظة: في النسخة الاحترافية يتم توليد الهاش مسبقاً، هنا نستخدم النسخة المبسطة للتوافق
+passwords = ['admin123', 'ceo2025']
+
+# تشفير كلمات المرور بالطريقة الصحيحة الجديدة
+hashed_passwords = stauth.Hasher(passwords).generate()
+
+credentials = {
+    "usernames": {
+        usernames[0]: {"name": names[0], "password": hashed_passwords[0]},
+        usernames[1]: {"name": names[1], "password": hashed_passwords[1]}
     }
 }
 
-# تشفير كلمات المرور يدوياً لتجنب خطأ التحديث
-Hasher = stauth.Hasher(['admin123', 'ceo2025'])
-hashed_passwords = Hasher.generate()
-
-# وضع الكلمات المشفرة في مكانها الصحيح
-config['credentials']['usernames']['invest_admin']['password'] = hashed_passwords[0]
-config['credentials']['usernames']['ceo_makkah']['password'] = hashed_passwords[1]
-
+# إنشاء كائن المصادقة
 authenticator = stauth.Authenticate(
-    config['credentials'],
-    config['cookie']['name'],
-    config['cookie']['key'],
-    config['cookie']['expiry_days']
+    credentials,
+    "investment_dashboard", # اسم الكوكي
+    "auth_key_2026",        # مفتاح التوقيع
+    cookie_expiry_days=1
 )
 
 # واجهة تسجيل الدخول
-name, authentication_status, username = authenticator.login('تسجيل الدخول للنظام الاستراتيجي', 'main')
+# ملاحظة: تم تعديل المسميات لتناسب التحديث الجديد للمكتبة
+name, authentication_status, username = authenticator.login(location='main')
 
 if authentication_status == False:
     st.error('اسم المستخدم أو كلمة المرور غير صحيحة')
 elif authentication_status == None:
-    st.warning('يرجى إدخال بيانات الدخول المعتمدة للوصول للملفات الاستثمارية')
+    st.warning('يرجى إدخال بيانات الدخول المعتمدة')
 elif authentication_status:
     # --- بداية محتوى النظام المحمي ---
     
@@ -66,62 +51,47 @@ elif authentication_status:
         authenticator.logout('تسجيل الخروج', 'sidebar')
 
     # ==========================================
-    # 2. محركات التقييم والأنشطة (المحدثة)
+    # 2. قاعدة البيانات والضوابط (جميع الأنشطة)
     # ==========================================
     ACTIVITIES_DB = {
-        "التجارية": {"method": "المتبقي", "max_term": 50, "grace_max": 0.10, "suitability": ["مركز المدينة", "محور رئيسي"]},
-        "الصحية": {"method": "الدخل", "max_term": 25, "grace_max": 0.10, "suitability": ["حي سكني"]},
-        "السياحية": {"method": "المتبقي", "max_term": 50, "grace_max": 0.10, "suitability": ["واجهة بحرية"]},
-        "التعليمية": {"method": "الدخل", "max_term": 25, "grace_max": 0.10, "suitability": ["حي سكني"]},
-        "الصناعية": {"method": "السوق", "max_term": 25, "grace_max": 0.10, "suitability": ["منطقة صناعية"]}
+        "التجارية": {"method": "المتبقي", "max_term": 50, "suitability": ["مركز المدينة", "محور رئيسي"]},
+        "الصحية": {"method": "الدخل", "max_term": 25, "suitability": ["حي سكني"]},
+        "التعليمية": {"method": "الدخل", "max_term": 25, "suitability": ["حي سكني"]},
+        "السياحية": {"method": "المتبقي", "max_term": 50, "suitability": ["واجهة بحرية"]},
+        "الصناعية": {"method": "السوق", "max_term": 25, "suitability": ["منطقة صناعية"]}
     }
 
-    def calculate_valuation(activity, gdv, capex, revenue, term, grace):
-        method = ACTIVITIES_DB[activity]["method"]
-        if method == "المتبقي":
-            land_val = max(gdv - (capex * 1.12 + gdv * 0.18), 0)
-            base_rent = land_val * 0.08
-        else:
-            base_rent = revenue * 0.25
-        
-        schedule = []
-        curr = base_rent
-        for y in range(1, term + 1):
-            if y <= grace: schedule.append(0)
-            else:
-                if y > 1 and (y - 1) % 5 == 0: curr *= 1.05
-                schedule.append(curr)
-        return base_rent, schedule
-
     # ==========================================
-    # 3. الواجهة الرسومية
+    # 3. الواجهة الرسومية والتحليل
     # ==========================================
-    st.title("🏛️ منصة إستدامة الاستثمارية")
+    st.title("🏛️ منصة إستدامة الاستثمارية (آمنة)")
     
-    tab1, tab2, tab3 = st.tabs(["📊 لوحة التحكم القيادية", "💰 تقييم العقود", "📄 الوثائق المعتمدة"])
+    tab1, tab2, tab3 = st.tabs(["📊 لوحة التحكم", "💰 تقييم العقود", "📄 الوثائق المعتمدة"])
 
     with tab1:
-        st.subheader("تحليل فجوة القيمة (Gap Analysis)")
+        st.subheader("تحليل فجوة القيمة")
         kpi_df = pd.DataFrame({
             'النشاط': list(ACTIVITIES_DB.keys()),
-            'الإيراد الحالي': [100, 55, 80, 40, 70],
-            'الإيراد العادل': [135, 65, 110, 52, 85]
+            'الإيراد الحالي': [100, 55, 40, 80, 70],
+            'الإيراد العادل': [145, 68, 55, 115, 88]
         })
-        fig = px.bar(kpi_df, x='النشاط', y=['الإيراد الحالي', 'الإيراد العادل'], barmode='group',
-                     color_discrete_sequence=['#1e3d59', '#d35400'])
+        fig = px.bar(kpi_df, x='النشاط', y=['الإيراد الحالي', 'الإيراد العادل'], 
+                     barmode='group', color_discrete_sequence=['#1e3d59', '#d35400'])
         st.plotly_chart(fig, use_container_width=True)
 
     with tab2:
         col_in, col_res = st.columns(2)
         with col_in:
             sel_act = st.selectbox("نوع النشاط الاستثماري", list(ACTIVITIES_DB.keys()))
-            gdv_in = st.number_input("القيمة التطويرية (GDV)", value=10000000)
-            capex_in = st.number_input("تكلفة الإنشاء (CAPEX)", value=6000000)
-            term_in = st.slider("المدة", 5, 50, 25)
-            rent, sched = calculate_valuation(sel_act, gdv_in, capex_in, 2000000, term_in, 2)
+            gdv = st.number_input("القيمة التطويرية (GDV)", value=10000000)
+            capex = st.number_input("تكلفة الإنشاء (CAPEX)", value=6000000)
+            term = st.slider("المدة", 5, 50, 25)
+            # حساب مبسط للأجرة
+            rent = (gdv - capex) * 0.08
         with col_res:
-            st.metric("الأجرة السنوية العادلة", f"{rent:,.0f} ريال")
-            st.area_chart(sched)
+            st.metric("الأجرة السنوية العادلة المقدرة", f"{rent:,.0f} ريال")
+            # رسم بياني للنمو
+            st.line_chart([rent * (1.05 ** (i // 5)) for i in range(term)])
 
     with tab3:
         st.subheader("إصدار رمز الموثوقية")
@@ -129,7 +99,9 @@ elif authentication_status:
         qr = qrcode.make(qr_str)
         buf = BytesIO()
         qr.save(buf, format="PNG")
-        st.image(buf.getvalue(), caption="رمز موثوقية التقييم - منصة إستدامة")
+        st.image(buf.getvalue(), caption="رمز موثوقية التقييم")
 
     st.markdown("---")
-    st.caption("نظام التخطيط الاستراتيجي المؤمن - كافة الحقوق محفوظة")
+    st.caption("نظام التخطيط الاستراتيجي المؤمن - كافة الحقوق محفوظة 2026")
+
+# --- نهاية النظام المحمي ---
