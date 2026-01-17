@@ -6,177 +6,118 @@ import qrcode
 from io import BytesIO
 from datetime import datetime
 import plotly.express as px
+import streamlit_authenticator as stauth
 
 # ==========================================
-# 1. إعدادات الصفحة والهوية البصرية
+# 1. نظام الحماية وتسجيل الدخول (Security)
 # ==========================================
-st.set_page_config(page_title="منصة إستدامة للاستثمار العقاري", layout="wide")
+# ملاحظة: في النسخة النهائية، يفضل وضع كلمات المرور في ملف سري (secrets.toml)
+names = ['إدارة الاستثمار', 'المدير التنفيذي']
+usernames = ['invest_admin', 'ceo_makkah']
+# كلمات المرور مشفرة (هنا استخدمنا كلمات بسيطة للتوضيح)
+passwords = ['admin123', 'admin2025'] 
 
-# استايل مخصص لتحسين المظهر
-st.markdown("""
-    <style>
-    .main { background-color: #f5f7f9; }
-    .stMetric { background-color: #ffffff; padding: 15px; border-radius: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
-    h1, h2, h3 { color: #1e3d59; font-family: 'Arial'; }
-    </style>
-    """, unsafe_allow_html=True)
+hashed_passwords = stauth.Hasher(passwords).generate()
 
-# ==========================================
-# 2. قاعدة بيانات الأنشطة والضوابط النظامية
-# ==========================================
-ACTIVITIES_DB = {
-    "التجارية": {"method": "المتبقي", "max_term": 50, "grace_max": 0.10, "suitability": ["مركز المدينة", "محور رئيسي"]},
-    "الصناعية": {"method": "السوق", "max_term": 25, "grace_max": 0.10, "suitability": ["منطقة صناعية"]},
-    "الصحية": {"method": "الدخل", "max_term": 25, "grace_max": 0.10, "suitability": ["حي سكني", "مركز المدينة"]},
-    "التعليمية": {"method": "الدخل", "max_term": 25, "grace_max": 0.10, "suitability": ["حي سكني"]},
-    "السياحية": {"method": "المتبقي", "max_term": 50, "grace_max": 0.10, "suitability": ["واجهة بحرية", "مركز المدينة"]},
-    "الرياضية والترفيهية": {"method": "الدخل", "max_term": 30, "grace_max": 0.10, "suitability": ["محور رئيسي", "واجهة بحرية"]},
-    "الزراعية والحيوانية": {"method": "السوق", "max_term": 20, "grace_max": 0.05, "suitability": ["منطقة طرفية"]},
-    "الاجتماعية": {"method": "التكلفة", "max_term": 25, "grace_max": 0.10, "suitability": ["حي سكني"]},
-    "النقل": {"method": "السوق", "max_term": 20, "grace_max": 0.05, "suitability": ["محور رئيسي"]},
-    "المالية": {"method": "السوق", "max_term": 15, "grace_max": 0.05, "suitability": ["مركز المدينة"]},
-    "المركبات": {"method": "السوق", "max_term": 15, "grace_max": 0.05, "suitability": ["منطقة صناعية", "محور رئيسي"]},
-    "الصيانة والتركيب": {"method": "السوق", "max_term": 10, "grace_max": 0.05, "suitability": ["منطقة صناعية"]},
-    "التشييد وإدارة العقارات": {"method": "الدخل", "max_term": 20, "grace_max": 0.05, "suitability": ["محور رئيسي"]},
-    "الخدمات العامة": {"method": "التكلفة", "max_term": 25, "grace_max": 0.10, "suitability": ["مركز المدينة", "حي سكني"]},
-    "الملبوسات والمنسوجات": {"method": "السوق", "max_term": 10, "grace_max": 0.05, "suitability": ["مركز المدينة"]},
-    "المرافق العامة": {"method": "التكلفة", "max_term": 50, "grace_max": 0.10, "suitability": ["محور رئيسي"]},
-}
+authenticator = stauth.Authenticate(
+    {'usernames': {
+        usernames[0]: {'name': names[0], 'password': hashed_passwords[0]},
+        usernames[1]: {'name': names[1], 'password': hashed_passwords[1]}
+    }},
+    'investment_dashboard_cookie', 'auth_key', cookie_expiry_days=1
+)
 
-# ==========================================
-# 3. المحركات المنطقية (Logic Engines)
-# ==========================================
+name, authentication_status, username = authenticator.login('تسجيل الدخول للنظام الاستراتيجي', 'main')
 
-def calculate_valuation(activity, gdv, capex, revenue, term, grace):
-    """حساب القيمة العادلة والنمو الخماسي (المادة 26)"""
-    method = ACTIVITIES_DB[activity]["method"]
-    if method == "المتبقي":
-        soft_costs = capex * 0.12
-        profit = gdv * 0.18
-        land_value = max(gdv - (capex + soft_costs + profit), 0)
-        base_rent = land_value * 0.08
-    elif method == "الدخل":
-        base_rent = revenue * 0.25
-    else: # أسلوب السوق/التكلفة
-        base_rent = (capex * 0.07) + (revenue * 0.10)
+if authentication_status == False:
+    st.error('اسم المستخدم أو كلمة المرور غير صحيحة')
+elif authentication_status == None:
+    st.warning('يرجى إدخال بيانات الدخول المعتمدة')
+elif authentication_status:
+    # --- بداية محتوى النظام المحمي ---
     
-    # بناء جدول التدفقات النقدية
-    cash_flows = []
-    current_rent = base_rent
-    for y in range(1, term + 1):
-        if y <= grace:
-            cash_flows.append(0)
+    with st.sidebar:
+        st.write(f'ترحيب: **{name}**')
+        authenticator.logout('تسجيل الخروج', 'sidebar')
+
+    # ==========================================
+    # 2. قاعدة البيانات والضوابط (المدمجة سابقاً)
+    # ==========================================
+    ACTIVITIES_DB = {
+        "التجارية": {"method": "المتبقي", "max_term": 50, "grace_max": 0.10, "suitability": ["مركز المدينة", "محور رئيسي"]},
+        "الصناعية": {"method": "السوق", "max_term": 25, "grace_max": 0.10, "suitability": ["منطقة صناعية"]},
+        "الصحية": {"method": "الدخل", "max_term": 25, "grace_max": 0.10, "suitability": ["حي سكوي", "مركز المدينة"]},
+        "التعليمية": {"method": "الدخل", "max_term": 25, "grace_max": 0.10, "suitability": ["حي سكني"]},
+        "السياحية": {"method": "المتبقي", "max_term": 50, "grace_max": 0.10, "suitability": ["واجهة بحرية", "مركز المدينة"]},
+    }
+
+    def calculate_valuation(activity, gdv, capex, revenue, term, grace):
+        method = ACTIVITIES_DB[activity]["method"]
+        if method == "المتبقي":
+            land_value = max(gdv - (capex * 1.12 + gdv * 0.18), 0)
+            base_rent = land_value * 0.08
         else:
-            if y > 1 and (y - 1) % 5 == 0: # الزيادة النظامية كل 5 سنوات
-                current_rent *= 1.05
-            cash_flows.append(current_rent)
-    return base_rent, cash_flows
-
-def get_suitability_score(activity, location, demand):
-    """حساب درجة الملاءمة من 100"""
-    score = 50
-    if location in ACTIVITIES_DB[activity]["suitability"]: score += 35
-    if demand == "نمو قوي": score += 15
-    elif demand == "انخفاض": score -= 20
-    return min(max(score, 0), 100)
-
-# ==========================================
-# 4. بناء واجهة الاستخدام (Main UI)
-# ==========================================
-
-st.title("🏛️ منظومة إستدامة | التخطيط الاستراتيجي العقاري")
-st.markdown("---")
-
-# القائمة الجانبية للمدخلات العامة
-with st.sidebar:
-    st.header("⚙️ إعدادات المحاكاة")
-    selected_act = st.selectbox("نوع النشاط الاستثماري", list(ACTIVITIES_DB.keys()))
-    loc_type = st.selectbox("طبيعة الموقع الجغرافي", ["مركز المدينة", "محور رئيسي", "حي سكني", "واجهة بحرية", "منطقة صناعية"])
-    demand_level = st.select_slider("بيئة الطلب السوقي", options=["انخفاض", "مستقر", "نمو قوي"], value="مستقر")
-    st.divider()
-    st.header("👥 المحرك الديموغرافي")
-    current_pop = st.number_input("السكان في محيط الموقع", value=25000)
-    growth_rate = st.slider("معدل النمو السنوي (%)", 0.0, 5.0, 2.5) / 100
-
-# التبويبات الرئيسية
-tab_radar, tab_finance, tab_kpi, tab_output = st.tabs([
-    "🎯 رادار الملاءمة", "💰 التقييم المالي", "📊 لوحة التحكم", "📄 الوثائق الرسمية"
-])
-
-# --- التبويب الأول: رادار الملاءمة والطلب ---
-with tab_radar:
-    col1, col2 = st.columns([1, 1])
-    with col1:
-        score = get_suitability_score(selected_act, loc_type, demand_level)
-        st.subheader("درجة الملاءمة الاستراتيجية")
-        st.metric("Suitability Score", f"{score}/100")
-        st.progress(score / 100)
+            base_rent = revenue * 0.25
         
-        future_pop = current_pop * ((1 + growth_rate) ** 10)
-        st.info(f"💡 السكان المتوقع بعد 10 سنوات: {int(future_pop):,} نسمة")
+        cash_flows = []
+        curr = base_rent
+        for y in range(1, term + 1):
+            if y <= grace: cash_flows.append(0)
+            else:
+                if y > 1 and (y - 1) % 5 == 0: curr *= 1.05
+                cash_flows.append(curr)
+        return base_rent, cash_flows
 
-    with col2:
-        st.subheader("تحليل فجوة الاحتياج")
-        standards = {"الصحية": 5000, "التعليمية": 3000, "التجارية": 1500}
-        needed = future_pop / standards.get(selected_act, 4000)
-        st.write(f"الاحتياج المستقبلي لـ {selected_act}: **{int(needed)} وحدة**")
-        
-
-# --- التبويب الثاني: التقييم المالي والمفاضلة ---
-with tab_finance:
-    c1, c2 = st.columns(2)
-    with c1:
-        st.subheader("مدخلات التقييم (وفق الدليل)")
-        gdv = st.number_input("القيمة التطويرية النهائية (GDV)", value=50000000)
-        capex = st.number_input("تكاليف التشييد (CAPEX)", value=30000000)
-        term = st.slider("مدة العقد (سنة)", 5, ACTIVITIES_DB[selected_act]["max_term"], 25)
-        grace = st.slider("فترة السماح (سنوات)", 0, int(term * 0.10), 2)
-        
-        rent, schedule = calculate_valuation(selected_act, gdv, capex, 5000000, term, grace)
-        st.success(f"الأجرة السنوية العادلة: {rent:,.2f} ﷼")
-
-    with c2:
-        st.subheader("استشراف التدفقات النقدية (25 سنة)")
-        st.area_chart(schedule, color="#1e3d59")
-        
-
-# --- التبويب الثالث: لوحة التحكم (KPIs) ---
-with tab_kpi:
-    st.subheader("📈 تحليل استرداد القيمة في المحفظة العقارية")
-    # بيانات افتراضية بناءً على ملف الـ 1800 عقد
-    kpi_data = pd.DataFrame({
-        'النشاط': ['تجاري', 'سياحي', 'تعليمي', 'صحي', 'صناعي'],
-        'الإيراد الحالي': [120, 90, 40, 55, 70],
-        'الإيراد العادل المستهدف': [155, 130, 52, 65, 85]
-    })
-    kpi_data['الفجوة المستردة'] = kpi_data['الإيراد العادل المستهدف'] - kpi_data['الإيراد الحالي']
+    # ==========================================
+    # 3. الواجهة الرئيسية للوحة التحكم
+    # ==========================================
+    st.title("🏛️ منصة إستدامة | النسخة المؤمنة")
     
-    fig = px.bar(kpi_data, x='النشاط', y=['الإيراد الحالي', 'الفجوة المستردة'], 
-                 title="فرص استرداد الأرباح (بالمليون ريال)", barmode='stack',
-                 color_discrete_sequence=['#1e3d59', '#d35400'])
-    st.plotly_chart(fig, use_container_width=True)
-    
+    tab_radar, tab_finance, tab_kpi, tab_output = st.tabs([
+        "🎯 رادار الملاءمة", "💰 التقييم المالي", "📊 لوحة التحكم", "📄 الوثائق الرسمية"
+    ])
 
-# --- التبويب الرابع: الوثائق والموثوقية ---
-with tab_output:
-    st.subheader("📑 إصدار مسودة خطاب إعادة التقييم")
-    contract_id = st.text_input("رقم العقد المستهدف", "30040868948")
-    
-    letter_template = f"""
-    إلى مستثمر نشاط {selected_act}،
-    بناءً على دليل سياسات التقييم 2023 ولائحة التصرف بالعقارات البلدية، 
-    نحيطكم علماً بأن الأجرة السنوية العادلة للعقد رقم {contract_id} 
-    قد تم تحديثها لتصبح {rent:,.2f} ﷼ سنوياً، مع مراعاة الزيادات الدورية (المادة 26).
-    """
-    st.text_area("نص الإشعار:", letter_template, height=150)
-    
-    st.divider()
-    st.subheader("🔐 رمز موثوقية التقييم (QR Code)")
-    qr_content = f"Contract: {contract_id} | Fair Rent: {rent:,.0f} | Date: {datetime.now().date()}"
-    qr = qrcode.make(qr_content)
-    buf = BytesIO()
-    qr.save(buf, format="PNG")
-    st.image(buf.getvalue(), caption="امسح الرمز للتحقق من بيانات التقييم على السحابة")
+    with tab_radar:
+        col1, col2 = st.columns(2)
+        with col1:
+            st.subheader("⚙️ إعدادات الموقع والنشاط")
+            selected_act = st.selectbox("نوع النشاط", list(ACTIVITIES_DB.keys()))
+            loc_type = st.selectbox("الموقع الجغرافي", ["مركز المدينة", "حي سكني", "واجهة بحرية"])
+            demand = st.select_slider("الطلب السوقي", ["انخفاض", "مستقر", "نمو قوي"], "مستقر")
+        with col2:
+            st.subheader("📈 الاستشراف الديموغرافي")
+            pop = st.number_input("السكان الحاليين", value=15000)
+            st.metric("السكان المتوقع (10 سنوات)", f"{int(pop * 1.3):,}")
 
-st.markdown("---")
-st.center = st.caption("منصة إستدامة | جميع الحقوق محفوظة لقطاع التخطيط الاستراتيجي والاستثمار")
+    with tab_finance:
+        c1, c2 = st.columns(2)
+        with c1:
+            gdv = st.number_input("القيمة التطويرية (GDV)", value=10000000)
+            capex = st.number_input("التكلفة (CAPEX)", value=6000000)
+            rent, schedule = calculate_valuation(selected_act, gdv, capex, 2000000, 25, 2)
+            st.success(f"الأجرة العادلة المقدرة: {rent:,.0f} ريال")
+        with c2:
+            st.area_chart(schedule)
+
+    with tab_kpi:
+        st.subheader("📊 تحليل الفجوة المالية للمحفظة")
+        kpi_df = pd.DataFrame({
+            'النشاط': list(ACTIVITIES_DB.keys()),
+            'الإيراد الحالي': [100, 40, 30, 25, 60],
+            'الإيراد العادل': [135, 55, 42, 35, 95]
+        })
+        fig = px.bar(kpi_df, x='النشاط', y=['الإيراد الحالي', 'الإيراد العادل'], barmode='group')
+        st.plotly_chart(fig, use_container_width=True)
+
+    with tab_output:
+        st.subheader("📄 إصدار الإخطارات الموثقة")
+        if st.button("توليد كود QR للتقييم"):
+            qr_data = f"Activity: {selected_act} | Rent: {rent:,.0f} | Auditor: {name}"
+            qr = qrcode.make(qr_data)
+            buf = BytesIO()
+            qr.save(buf, format="PNG")
+            st.image(buf.getvalue(), caption="امسح الرمز للتحقق من الصلاحية")
+
+    st.caption("نظام مؤمن - إدارة التخطيط الاستراتيجي والاستثمار")
+
+# --- نهاية النظام المحمي ---
